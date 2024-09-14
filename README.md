@@ -1,0 +1,2 @@
+# Multiple Hypothesis Tracker
+Lightweight small test implementation of Multiple Hypothesis Tracker. Code does not follow proper coding practices. The repository is intended for fast prototyping, not mature implementation.
