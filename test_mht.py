@@ -1,7 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from mht_implementation import MHT  # Assuming the updated code is in mht_implementation.py
+from mht_implementation import MHT
+import logging
 
 def generate_trajectory(start, end, steps):
     return np.array([np.linspace(start[i], end[i], steps) for i in range(2)]).T
@@ -9,110 +8,60 @@ def generate_trajectory(start, end, steps):
 def add_noise(trajectory, noise_level):
     return trajectory + np.random.normal(0, noise_level, trajectory.shape)
 
-class MHTSimulation:
-    def __init__(self, true_trajectories, noise_level, detection_prob, false_alarm_rate, steps):
-        self.true_trajectories = true_trajectories
-        self.noise_level = noise_level
-        self.detection_prob = detection_prob
-        self.false_alarm_rate = false_alarm_rate
-        self.steps = steps
-        self.current_step = 0
+def run_mht_simulation(true_trajectories, noise_level, detection_prob, false_alarm_rate, steps):
+    mht = MHT(max_hypotheses=100, state_dim=4, meas_dim=2, pruning_threshold=1e-5)
+    
+    F = np.array([[1, 0, 1, 0],
+                  [0, 1, 0, 1],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]])
+    Q = np.eye(4) * 0.1
+    R = np.eye(2) * noise_level**2
+    
+    for step in range(steps):
+        logging.info(f"Processing step {step + 1}/{steps}")
         
-        self.mht = MHT(max_hypotheses=100, state_dim=4, meas_dim=2)
-        self.measurements = []
-        self.mht_results = []
-        
-        self.F = np.array([[1, 0, 1, 0],
-                           [0, 1, 0, 1],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
-        self.Q = np.eye(4) * 0.1
-        self.R = np.eye(2) * noise_level**2
-
-    def step(self):
-        if self.current_step >= self.steps:
-            return False
-
         # Generate noisy measurements
-        step_measurements = []
-        for traj in self.true_trajectories:
-            if np.random.random() < self.detection_prob:
-                meas = traj[self.current_step, :2] + np.random.normal(0, self.noise_level, 2)
-                step_measurements.append(meas)
+        measurements = []
+        for traj in true_trajectories:
+            if np.random.random() < detection_prob:
+                meas = traj[step, :2] + np.random.normal(0, noise_level, 2)
+                measurements.append(meas)
         
         # Add false alarms
-        num_false_alarms = np.random.poisson(self.false_alarm_rate)
+        num_false_alarms = np.random.poisson(false_alarm_rate)
         for _ in range(num_false_alarms):
             false_alarm = np.random.uniform(0, 100, 2)
-            step_measurements.append(false_alarm)
+            measurements.append(false_alarm)
+        
+        logging.info(f"Generated {len(measurements)} measurements ({num_false_alarms} false alarms)")
         
         # MHT update
-        self.mht.predict(self.F, self.Q)
-        self.mht.update(step_measurements, self.R, self.detection_prob, self.false_alarm_rate)
+        mht.predict(F, Q)
+        mht.update(measurements, R, detection_prob, false_alarm_rate)
         
-        # Store results
-        best_hypothesis = self.mht.get_best_hypothesis()
-        self.measurements.append(step_measurements)
-        self.mht_results.append([track['state'][:2] for track in best_hypothesis['tracks']])
-        
-        self.current_step += 1
-        return True
+        # Log best hypothesis
+        best_hypothesis = mht.get_best_hypothesis()
+        logging.info(f"Best hypothesis has {len(best_hypothesis['tracks'])} tracks")
+        for i, track in enumerate(best_hypothesis['tracks']):
+            logging.info(f"Track {i + 1}: position = ({track['state'][0]:.2f}, {track['state'][1]:.2f})")
 
-def animate_mht(true_trajectories, noise_level, detection_prob, false_alarm_rate, steps):
-    simulation = MHTSimulation(true_trajectories, noise_level, detection_prob, false_alarm_rate, steps)
+if __name__ == "__main__":
+    logging.basicConfig(
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        filename='mht_simulation.log',
+                        filemode='w', level=logging.DEBUG)
     
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
-    ax.set_title('Multiple Hypothesis Tracker Animation')
-    ax.set_xlabel('X position')
-    ax.set_ylabel('Y position')
-    
-    true_lines = [ax.plot([], [], 'k-', label='True')[0] for _ in true_trajectories]
-    meas_scatter = ax.scatter([], [], c='r', s=10, label='Measurements')
-    mht_lines = [ax.plot([], [], 'g--', label='MHT')[0] for _ in range(len(true_trajectories))]
-    
-    ax.legend()
-    
-    def init():
-        for line in true_lines + mht_lines:
-            line.set_data([], [])
-        meas_scatter.set_offsets(np.empty((0, 2)))
-        return true_lines + [meas_scatter] + mht_lines
-    
-    def update(frame):
-        simulation.step()
-        
-        # Update true trajectories
-        for i, line in enumerate(true_lines):
-            line.set_data(true_trajectories[i][:frame+1, 0], true_trajectories[i][:frame+1, 1])
-        
-        # Update measurements
-        all_measurements = np.concatenate(simulation.measurements)
-        meas_scatter.set_offsets(all_measurements)
-        
-        # Update MHT results
-        for i, line in enumerate(mht_lines):
-            track_results = [result[i] for result in simulation.mht_results if i < len(result)]
-            if track_results:
-                line.set_data([state[0] for state in track_results], [state[1] for state in track_results])
-        
-        return true_lines + [meas_scatter] + mht_lines
-    
-    anim = FuncAnimation(fig, update, frames=steps, init_func=init, blit=True, interval=100)
-    plt.show()
+    np.random.seed(42)
+    steps = 50
+    noise_level = 1.0
+    detection_prob = 0.9
+    false_alarm_rate = 0.1
 
-# Run simulation
-np.random.seed(42)
-steps = 50
-noise_level = 1.0
-detection_prob = 0.9
-false_alarm_rate = 0.1
+    true_trajectories = [
+        generate_trajectory((10, 10), (80, 80), steps),
+        generate_trajectory((90, 10), (20, 80), steps),
+        generate_trajectory((50, 90), (50, 10), steps)
+    ]
 
-true_trajectories = [
-    generate_trajectory((10, 10), (80, 80), steps),
-    generate_trajectory((90, 10), (20, 80), steps),
-    generate_trajectory((50, 90), (50, 10), steps)
-]
-
-animate_mht(true_trajectories, noise_level, detection_prob, false_alarm_rate, steps)
+    run_mht_simulation(true_trajectories, noise_level, detection_prob, false_alarm_rate, steps)
