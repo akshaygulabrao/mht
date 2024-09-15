@@ -83,6 +83,7 @@ class Simulation:
             Track(2, [10, 10, -1, -1], np.eye(4) * 0.5)
         ]
         self.time = 0
+        self.next_id = 3  # For assigning unique IDs to new tracks
     
     def generate_observations(self):
         observations = []
@@ -101,6 +102,21 @@ class Simulation:
     
     def step(self):
         self.time += 1
+        
+        # Create new moving object with 2% probability
+        if np.random.rand() < 0.02:
+            start = np.random.uniform(0, 20, 2)
+            end = np.random.uniform(0, 20, 2)
+            velocity = (end - start) / 20  # Assume it takes 20 steps to reach the destination
+            new_track = Track(self.next_id, [start[0], start[1], velocity[0], velocity[1]], np.eye(4) * 0.5)
+            self.tracks.append(new_track)
+            self.next_id += 1
+        
+        # Delete existing track with 1% probability
+        if self.tracks and np.random.rand() < 0.02:
+            track_to_remove = np.random.choice(self.tracks)
+            self.tracks.remove(track_to_remove)
+        
         observations = self.generate_observations()
         jpda_mht(self.tracks, observations)
         return observations
