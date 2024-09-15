@@ -14,6 +14,8 @@ class Track:
         self.state = np.array(state)  # [x, y, vx, vy]
         self.covariance = np.array(covariance)
         self.history = [self.state[:2]]
+        self.age = 0
+        self.missed_detections = 0
 
 class Observation:
     def __init__(self, position):
@@ -72,6 +74,7 @@ def jpda_mht(tracks, observations):
     update_tracks_jpda(tracks, observations, association_probs)
     
     return association_probs
+    
 
 class Simulation:
     def __init__(self):
@@ -113,9 +116,6 @@ class VisualizationWidget(pg.GraphicsLayoutWidget):
         self.track_plots = {}
         self.observation_plot = self.plot.plot([], [], pen=None, symbol='o', symbolBrush='r')
         
-        for track in self.simulation.tracks:
-            self.track_plots[track.id] = self.plot.plot([], [], pen=pg.mkPen(color=(np.random.randint(256), np.random.randint(256), np.random.randint(256)), width=2))
-        
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(100)  # Update every 100 ms
@@ -127,9 +127,19 @@ class VisualizationWidget(pg.GraphicsLayoutWidget):
         obs_y = [obs.position[1] for obs in observations]
         self.observation_plot.setData(obs_x, obs_y)
         
+        # Update existing tracks and add new ones
         for track in self.simulation.tracks:
+            if track.id not in self.track_plots:
+                self.track_plots[track.id] = self.plot.plot([], [], pen=pg.mkPen(color=(np.random.randint(256), np.random.randint(256), np.random.randint(256)), width=2))
             history = np.array(track.history)
             self.track_plots[track.id].setData(history[:, 0], history[:, 1])
+        
+        # Remove terminated tracks
+        current_track_ids = set(track.id for track in self.simulation.tracks)
+        for track_id in list(self.track_plots.keys()):
+            if track_id not in current_track_ids:
+                self.plot.removeItem(self.track_plots[track_id])
+                del self.track_plots[track_id]
 
 if __name__ == '__main__':
     simulation = Simulation()
