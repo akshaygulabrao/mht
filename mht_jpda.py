@@ -7,119 +7,44 @@ pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')  # 'k' for black
 
 
-
-class Track:
-    def __init__(self, id, state, covariance):
-        self.id = id
-        self.state = np.array(state)  # [x, y, vx, vy]
-        self.covariance = np.array(covariance)
-        self.history = [self.state[:2]]
-        self.age = 0
-        self.missed_detections = 0
-
-class Observation:
-    def __init__(self, position):
-        self.position = np.array(position)
-
-def predict_track(track, dt=1.0):
-    F = np.array([[1, 0, dt, 0],
-                  [0, 1, 0, dt],
-                  [0, 0, 1, 0],
-                  [0, 0, 0, 1]])
-    Q = np.eye(4) * 0.1  # Process noise
-    track.state = F @ track.state
-    track.covariance = F @ track.covariance @ F.T + Q
-    track.history.append(track.state[:2])
-
-def calculate_association_probabilities(tracks, observations):
-    num_tracks = len(tracks)
-    num_obs = len(observations)
-    
-    likelihood_matrix = np.zeros((num_obs, num_tracks))
-    for i, obs in enumerate(observations):
-        for j, track in enumerate(tracks):
-            predicted_obs = track.state[:2]
-            S = track.covariance[:2, :2]
-            likelihood_matrix[i, j] = multivariate_normal.pdf(obs.position, predicted_obs, S)
-    
-    total_likelihood = likelihood_matrix.sum() + 1e-10
-    likelihood_matrix /= total_likelihood
-    
-    beta = 0.1  # Probability of false alarm or new target
-    association_probs = np.zeros((num_obs, num_tracks + 1))
-    for i in range(num_obs):
-        normalization = beta + likelihood_matrix[i, :].sum()
-        association_probs[i, :-1] = likelihood_matrix[i, :] / normalization
-        association_probs[i, -1] = beta / normalization
-    
-    return association_probs
-
-def update_tracks_jpda(tracks, observations, association_probs):
-    for j, track in enumerate(tracks):
-        innovation = np.zeros(2)
-        for i, obs in enumerate(observations):
-            innovation += association_probs[i, j] * (obs.position - track.state[:2])
-        
-        S = track.covariance[:2, :2]
-        K = track.covariance[:, :2] @ np.linalg.inv(S)
-        
-        track.state += K @ innovation
-        track.covariance -= K @ S @ K.T
-
-def jpda_mht(tracks, observations):
-    for track in tracks:
-        predict_track(track)
-    
-    association_probs = calculate_association_probabilities(tracks, observations)
-    update_tracks_jpda(tracks, observations, association_probs)
-    
-    return association_probs
-    
-
 class Simulation:
     def __init__(self):
-        self.tracks = [
-            Track(1, [0, 0, 1, 1], np.eye(4) * 0.5),
-            Track(2, [10, 10, -1, -1], np.eye(4) * 0.5)
-        ]
-        self.time = 0
-        self.next_id = 3  # For assigning unique IDs to new tracks
-    
-    def generate_observations(self):
-        observations = []
-        for track in self.tracks:
-            if np.random.rand() < 0.9:  # 90% detection rate
-                true_pos = track.state[:2] + np.random.normal(0, 0.5, 2)
-                observations.append(Observation(true_pos))
-        
-        # Add false alarms
-        num_false = np.random.poisson(0.5)
-        for _ in range(num_false):
-            false_pos = np.random.uniform(0, 20, 2)
-            observations.append(Observation(false_pos))
-        
-        return observations
-    
+        # Initialize true states of objects
+        # ...
+        pass
+
     def step(self):
-        self.time += 1
-        
-        # Create new moving object with 2% probability
-        if np.random.rand() < 0.02:
-            start = np.random.uniform(0, 20, 2)
-            end = np.random.uniform(0, 20, 2)
-            velocity = (end - start) / 20  # Assume it takes 20 steps to reach the destination
-            new_track = Track(self.next_id, [start[0], start[1], velocity[0], velocity[1]], np.eye(4) * 0.5)
-            self.tracks.append(new_track)
-            self.next_id += 1
-        
-        # Delete existing track with 1% probability
-        if self.tracks and np.random.rand() < 0.02:
-            track_to_remove = np.random.choice(self.tracks)
-            self.tracks.remove(track_to_remove)
-        
-        observations = self.generate_observations()
-        jpda_mht(self.tracks, observations)
+        # Update true states
+        # Generate noisy observations
         return observations
+
+    def get_true_states(self):
+        # Return the ground truth states
+        # ...
+        return true_states
+
+class Tracker:
+    def __init__(self):
+        # Initialize tracker state
+        # ...
+        pass
+
+    def update(self, observations):
+        # Process new observations
+        # Update tracks
+        return estimated_states
+
+# Main loop
+simulation = Simulation()
+tracker = Tracker()
+
+for t in range(1000):
+    observations = simulation.step()
+    estimated_states = tracker.update(observations)
+    
+    # Evaluation (outside of both simulation and tracker)
+    true_states = simulation.get_true_states()
+    evaluate_performance(true_states, estimated_states)
 
 class VisualizationWidget(pg.GraphicsLayoutWidget):
     def __init__(self, simulation):
